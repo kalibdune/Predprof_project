@@ -19,6 +19,7 @@ COPY ./requirements-prod.txt .
 RUN pip install -r requirements-prod.txt
 RUN apk del python3-dev mariadb-dev build-base
 COPY ./site /app
+COPY ./tests.py /app
 WORKDIR /app
 ENV SUPER_USER_NAME=admin
 ENV SUPER_USER_EMAIL=admin@example.com
