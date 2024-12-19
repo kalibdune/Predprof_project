@@ -25,7 +25,7 @@ ENV SUPER_USER_EMAIL=admin@example.com
 ENV SUPER_USER_PASSWORD=adminpassword
 
 RUN DJANGO_SUPERUSER_PASSWORD=$SUPER_USER_PASSWORD 
-RUN python manage.py createsuperuser --username $SUPER_USER_NAME --email $SUPER_USER_EMAIL --noinput
 RUN python manage.py makemigrations 
 RUN python manage.py migrate 
 RUN python manage.py collectstatic --no-input
+RUN python manage.py createsuperuser --username $SUPER_USER_NAME --email $SUPER_USER_EMAIL --noinput
