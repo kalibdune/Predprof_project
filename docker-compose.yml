@@ -1,76 +1,96 @@
-version: '3.7'
-
 services:
   db:
     image: mysql:8
-    expose:
-      - "3306"
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
     environment:
-      - MYSQL_ROOT_HOST=%
-      - MYSQL_DATABASE=Predprof
-      - MYSQL_USER=admin
-      - MYSQL_PASSWORD=password
-      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_ROOT_HOST=${DB_HOST}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
     volumes:
       - dbdata:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    networks:
+      - predprof_backend
 
   django_gunicorn:
     volumes:
       - static:/static
     env_file:
       - .env
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
     build:
       context: .
-    expose:
-      - "8000"
-    command: sh /entrypoint.sh
+    ports:
+      - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - predprof_backend
 
   redis:
-    image: redis:alpine
-    expose:
-      - "6379"
+    image: redis:7.4.0
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    networks:
+      - predprof_backend
 
-  celelry:
+  celery:
     volumes:
       - static:/static
     env_file:
       - .env
     build:
       context: .
-    command: sh /worker_entrypoint.sh
-
+    command: celery -A config worker -P prefork --concurrency=2 -l info
     depends_on:
-      - django_gunicorn
-      - db
-      - redis
-      - nginx
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "celery -A config status" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    networks:
+      - predprof_backend
 
-  celelry-beat:
+  celery-beat:
     volumes:
       - static:/static
     env_file:
       - .env
     build:
       context: .
-    command: sh /beat_entrypoint.sh
-
+    command: celery -A config beat -l info
     depends_on:
-      - django_gunicorn
-      - db
-      - redis
-      - nginx
-    
-  telegram:
-    volumes:
-      - static:/static
-    env_file:
-      - .env
-    build:
-      context: .
-    command: sh /telegram_entrypoint.sh
-  
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "celery -A config status" ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+    networks:
+      - predprof_backend
+
   nginx:
     build: ./nginx
     volumes:
@@ -78,9 +98,15 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - django_gunicorn
+      django_gunicorn:
+        condition: service_started
+    networks:
+      - predprof_backend
 
 volumes:
   static:
   dbdata:
 
+
+networks:
+  predprof_backend:
